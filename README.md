@@ -1,279 +1,296 @@
-# Network Traffic Analysis Labs
+# Network Traffic Analysis with Wireshark
 
-This README consolidates multiple Wireshark-based network traffic analysis labs into one technical reference. It keeps only packet-analysis objectives, direct technical answers (where clearly supported by the provided materials), and screenshot evidence from captures.
+This repository documents a set of packet-analysis investigations across HTTP, TCP, UDP, NAT, Ethernet, and ARP traffic. The focus is not on lab completion checkboxes—it is on reading packets like evidence, explaining what fields mean, and connecting captures to real troubleshooting and security questions.
+
+## What This Repository Demonstrates
+
+- Packet capture and focused filtering in Wireshark
+- Interpreting HTTP request/response behavior at packet level
+- Reading TCP and UDP behavior through stream and retransmission evidence
+- Explaining source/destination addressing across IP and Ethernet layers
+- Reasoning about NAT effects when traffic is observed at different network points
+- Understanding local-LAN behavior through Ethernet and ARP frames
+- Turning packet observations into practical analyst conclusions
+
+## How to Read This Project
+
+Each lab section is presented as a mini investigation:
+
+1. **Scenario** – what traffic was being examined
+2. **Method / Filters Used** – how traffic was isolated
+3. **Key Findings** – strongest packet-level observations
+4. **Why It Matters** – operational or security relevance
+5. **Evidence** – supporting screenshots
 
 ---
 
-# Lab 1 – Wireshark Installation and Basic Packet Analysis
+## Key Networking Concepts Explained
+
+### Packet capture
+- **Plain English:** A packet capture is a time-ordered record of what devices are sending and receiving.
+- **Why it matters:** It shows what actually happened on the wire, not what an app *thinks* happened.
+- **Analogy:** Like CCTV footage for network traffic.
+
+### Protocol filtering
+- **Plain English:** Filters reduce noise so you can focus on one behavior (for example `http`, `arp`, or one IP).
+- **Why it matters:** Good filtering turns large traces into fast root-cause analysis.
+- **Analogy:** Like searching a long chat history by keyword instead of reading everything.
+
+### Encapsulation
+- **Plain English:** Data is wrapped in layers (application, transport, IP, Ethernet), each adding routing/delivery info.
+- **Why it matters:** Troubleshooting depends on knowing which layer is responsible for a failure.
+- **Analogy:** A smaller envelope inside a larger labeled envelope inside a shipping box.
+
+### TCP vs UDP
+- **Plain English:** TCP is connection-oriented and reliability-focused; UDP is lightweight and best-effort.
+- **Why it matters:** TCP gives ordering/retransmission; UDP reduces overhead and latency.
+- **Analogy:** TCP is certified mail with confirmations; UDP is a postcard.
+
+### TCP handshake
+- **Plain English:** TCP starts with SYN → SYN/ACK → ACK before data transfer.
+- **Why it matters:** Handshake failures quickly point to reachability, firewall, or service issues.
+- **Analogy:** Introducing yourself before starting a serious conversation.
+
+### RTT (Round-Trip Time)
+- **Plain English:** RTT is how long it takes for a packet and its response to complete one round trip.
+- **Why it matters:** High RTT can hurt user experience even when packets are not dropped.
+- **Analogy:** Asking a question and timing how long it takes to hear back.
+
+### Source port vs destination port
+- **Plain English:** Source port identifies the client-side socket; destination port identifies the target service.
+- **Why it matters:** Port direction helps separate client behavior from server behavior in mixed traffic.
+- **Analogy:** Caller extension vs the department extension dialed.
+
+### NAT (Network Address Translation)
+- **Plain English:** NAT rewrites addresses (and sometimes ports) between private and public sides.
+- **Why it matters:** Captures from two vantage points can look inconsistent unless NAT is accounted for.
+- **Analogy:** A front desk forwarding replies back to the correct internal person.
+
+### Ethernet frames
+- **Plain English:** Ethernet is local-link delivery with source/destination MAC and EtherType fields.
+- **Why it matters:** It explains local-hop forwarding and gateway behavior.
+- **Analogy:** Local delivery label used only within one neighborhood.
+
+### MAC addresses
+- **Plain English:** MAC addresses identify interfaces on the local segment.
+- **Why it matters:** They reveal who receives the frame *on this LAN hop*.
+- **Analogy:** Apartment numbers inside one building.
+
+### EtherType
+- **Plain English:** EtherType identifies what payload the Ethernet frame carries (IPv4, ARP, etc.).
+- **Why it matters:** It is the first clue for protocol demultiplexing at Layer 2.
+- **Analogy:** A package sticker saying “contains documents” vs “contains electronics.”
+
+### ARP
+- **Plain English:** ARP maps IPv4 addresses to MAC addresses on local networks.
+- **Why it matters:** Without ARP resolution, IP packets cannot be delivered on Ethernet.
+- **Analogy:** Asking, “Who has this IP? Tell me your MAC.”
+
+### Broadcast vs unicast
+- **Plain English:** Broadcast is sent to everyone on the segment; unicast is sent to one specific MAC.
+- **Why it matters:** ARP requests are broadcast; most data traffic is unicast.
+- **Analogy:** Public announcement vs direct phone call.
+
+### Checksums
+- **Plain English:** Checksums detect corruption in headers/payloads (IP/TCP/UDP dependent).
+- **Why it matters:** Unexpected checksum behavior can indicate corruption, offload effects, or header rewrites (for example NAT).
+- **Analogy:** A quick math fingerprint to verify content integrity.
+
+### Why packet analysis matters for troubleshooting and security
+Packet analysis validates real behavior: service responses, delay, retransmission patterns, local gateway forwarding, and translation side effects. It is often the fastest way to separate app issues from network issues.
+
+---
+
+# Lab 1 – HTTP Flow and Addressing Baseline
+
+## Why This Matters
+A strong baseline on HTTP flow, timing, and addressing is useful before deeper transport/security analysis.
+
+## Scenario
+The investigation focused on HTTP traffic to a web target and measured response behavior and endpoint addressing.
+
+## Method / Filters Used
+- `http`
+- Time reference around HTTP request/response packets
+- Packet detail inspection for source and destination IP fields
+
+## Key Findings
+- HTTP request/response flow is visible and traceable at packet level.
+- Measured request-to-response timing captured as **160.394953882 seconds**.
+- Endpoint addressing in the captured flow shows:
+  - Source IP: **10.0.2.15**
+  - Destination IP: **185.125.190.18**
+
+## Why These Findings Matter
+Timing and endpoint context create a practical baseline: if later captures show worse response time or changed destination patterns, this baseline helps quickly identify regressions, routing changes, or upstream service issues.
+
+## Evidence
+![Lab 1 HTTP filtered traffic](screenshots/lab1_q3_http_filter.png)
+![Lab 1 HTTP timing](screenshots/lab1_q4_http_timing.png)
+![Lab 1 source/destination IP](screenshots/lab1_q5_source_destination_ip.png)
 
-## Topic Overview
-This lab focuses on the foundations of packet analysis: installing Wireshark, selecting capture interfaces, recognizing protocol types, filtering traffic, and reading timing/address details from packets. These basics matter because every advanced troubleshooting workflow starts with accurate capture setup and packet interpretation.
+---
+
+# Lab 2 – HTTP Semantics, Caching, and Authentication Behavior
 
-## Objective / Question 1
-Confirm that Wireshark is installed and interfaces are available for packet capture.
+## Why This Matters
+HTTP packet semantics directly support web troubleshooting and security analysis: version mismatch, caching confusion, and auth challenge loops all appear in headers/status lines.
 
-### Answer
-Wireshark was installed successfully, and capture interfaces were detected and available.
+## Scenario
+The investigation examined normal HTTP retrieval, cache-aware responses, and Basic Authentication exchange behavior.
 
-### Screenshots
-![Lab 1 Question 1 Screenshot 1](screenshots/lab1_q1_wireshark_installed.png)
-![Lab 1 Question 1 Screenshot 2](screenshots/lab1_q1_interfaces.png)
+## Method / Filters Used
+- `http`
+- Frame-level inspection of request and status lines
+- Header review (`Accept-Language`, `Last-Modified`, `Authorization`, `WWW-Authenticate`)
 
-## Objective / Question 2
-Identify major protocols visible during capture.
+## Key Findings
+- Client and server both operate with **HTTP/1.1** in the captured flow.
+- One server response is **304 Not Modified**, confirming cache validation behavior instead of full object retransmission.
+- Language preference is visible in headers: `Accept-Language: en-US,en;q=0.5`.
+- Captured server metadata includes: `Last-Modified: Wed, 15 Oct 2025 23:34:32 GMT`.
+- Authentication flow shows a classic challenge/response pattern:
+  - First response: **401 Unauthorized** with `WWW-Authenticate: Basic ...`
+  - Follow-up request: adds `Authorization: Basic ...`
+- Client/server addressing in this dataset includes:
+  - Client/source: **10.0.2.15**
+  - Server/destination: **128.119.245.12**
 
-### Answer
-The capture shows multiple protocols, including TCP, HTTP, and TLSv1.2. TCP provides reliable transport, HTTP carries web request/response traffic, and TLS secures encrypted sessions.
+## Why These Findings Matter
+- A `304` can explain “page loaded instantly” vs “new content not visible” user reports.
+- A `401` + later `Authorization` header validates auth workflow at packet level.
+- Header context (`Last-Modified`, language preference) helps verify app behavior and client policy.
 
-### Screenshots
-![Lab 1 Question 2 Screenshot 1](screenshots/lab1_q2_protocols_list.png)
+## Evidence
+![Lab 2 request/response frames](screenshots/lab2_q1_frame_665.png)
+![Lab 2 304 status](screenshots/lab2_q1_frame_759_status.png)
+![Lab 2 accept-language header](screenshots/lab2_q2_accept_language.png)
+![Lab 2 last-modified header](screenshots/lab2_q5_last_modified.png)
+![Lab 2 basic auth header](screenshots/lab2_q8_basic_auth_header.png)
 
-## Objective / Question 3
-Filter and inspect HTTP packets.
+---
 
-### Answer
-HTTP filtering was applied successfully to isolate web traffic and inspect request/response packets.
+# Lab 3 – Transport Analysis: TCP Reliability Signals, UDP Context, and VPN Visibility
 
-### Screenshots
-![Lab 1 Question 3 Screenshot 1](screenshots/lab1_q3_http_filter.png)
+## Why This Matters
+Transport-layer patterns are where performance and reliability problems become visible. Packet evidence here can separate congestion/retransmission issues from application defects.
 
-## Objective / Question 4
-Measure timing between HTTP request and response.
+## Scenario
+The lab artifacts include ping context, TCP stream analysis, retransmission-focused evidence, and VPN-related capture points.
+
+## Method / Filters Used
+- `ip.addr == 8.8.8.8` (ping-focused context)
+- `tcp.stream == <n>` (stream-level TCP review)
+- Retransmission-focused TCP inspection (for example fast retransmit indicators)
+- VPN traffic verification view
 
-### Answer
-The measured time from HTTP GET to HTTP 200 OK response is **160.394953882 seconds**.
+## Key Findings
+- TCP stream-level and retransmission evidence is present in the dataset screenshots.
+- VPN-related traffic confirmation evidence is included.
+- The available materials in this repository do **not** preserve a complete text extraction of all numeric findings for this lab, so values are interpreted conservatively.
 
-### Screenshots
-![Lab 1 Question 4 Screenshot 1](screenshots/lab1_q4_http_timing.png)
+## Why These Findings Matter
+Analyst note: **UDP and TCP trade-offs are operational, not theoretical**—TCP overhead buys reliability and ordering, while UDP keeps overhead low at the cost of built-in recovery.
 
-## Objective / Question 5
-Identify source and destination IP addresses from the HTTP packet.
+Analyst note: **A capture with retransmission indicators is often the fastest clue** that packet loss, path instability, or congestion is affecting user experience.
 
-### Answer
-- Source IP: **10.0.2.15**
-- Destination IP: **185.125.190.18**
+## Evidence
+![Lab 3 ping-focused capture](screenshots/lab3_q1_ping_capture.png)
+![Lab 3 TCP stream evidence](screenshots/lab3_q2_tcp_stream.png)
+![Lab 3 fast retransmission evidence](screenshots/lab3_q3_fast_retransmission.png)
+![Lab 3 VPN evidence](screenshots/lab3_q4_vpn_confirmation.png)
 
-### Screenshots
-![Lab 1 Question 5 Screenshot 1](screenshots/lab1_q5_source_destination_ip.png)
+---
 
-# Lab 2 – Wireshark HTTP Traffic
+# Lab 4 – NAT and Multi-Vantage Packet Interpretation
 
-## Topic Overview
-This lab explores HTTP behavior in detail: request/response versions, headers, status codes, caching behavior, and authentication flow. These details matter because packet-level HTTP inspection helps explain web app behavior, failed logins, stale content, and client/server compatibility issues.
+## Why This Matters
+NAT is a frequent source of confusion when teams compare captures from different points in the network. Understanding translation prevents false conclusions.
 
-## Objective / Question 1
-Determine HTTP versions used by client and server.
+## Scenario
+The investigation compares traffic behavior around NAT and reviews TCP/UDP/ICMP views relevant to translation-aware analysis.
 
-### Answer
-Both the browser and server use **HTTP/1.1** based on request/response lines in the captured frames.
+## Method / Filters Used
+- NAT-side and counterpart capture comparison
+- TCP and UDP field review (ports/header context)
+- ICMP inspection where applicable
 
-### Screenshots
-![Lab 2 Question 1 Screenshot 1](screenshots/lab2_q1_http_get_response.png)
-![Lab 2 Question 1 Screenshot 2](screenshots/lab2_q1_frame_665.png)
-![Lab 2 Question 1 Screenshot 3](screenshots/lab2_q1_frame_759_status.png)
+## Key Findings
+- NAT-focused screenshots show traffic from different vantage points.
+- TCP port and UDP header comparison evidence exists in the dataset.
+- ICMP behavior is captured as part of translation-aware analysis context.
+- Full per-packet numeric extraction for every NAT prompt is not clearly recoverable from remaining repo artifacts; findings are reported without inventing unseen values.
 
-## Objective / Question 2
-Identify the browser language preference from HTTP headers.
+## Why These Findings Matter
+Analyst note: **Two captures of the same flow can look “different” and both be correct** when NAT rewrites source information between observation points.
 
-### Answer
-The `Accept-Language` header indicates: **en-US,en;q=0.5**.
+Analyst note: **Checksum interpretation must account for header rewrites and host offload behavior**, or analysts may mislabel normal translation/offload effects as corruption.
 
-### Screenshots
-![Lab 2 Question 2 Screenshot 1](screenshots/lab2_q2_accept_language.png)
+## Evidence
+![Lab 4 NAT-side capture](screenshots/lab4_q1_nat_home_capture.png)
+![Lab 4 TCP port comparison](screenshots/lab4_q2_tcp_ports.png)
+![Lab 4 UDP header comparison](screenshots/lab4_q3_udp_header_compare.png)
+![Lab 4 ICMP context](screenshots/lab4_q4_icmp_nat_view.png)
 
-## Objective / Question 3
-Identify client and server IP addresses for the HTTP exchange.
+---
 
-### Answer
-- Client/source IP: **10.0.2.15**
-- Server/destination IP (gaia.cs.umass.edu): **128.119.245.12**
+# Lab 5 – Ethernet and ARP: Local-LAN Truth
 
-### Screenshots
-![Lab 2 Question 3 Screenshot 1](screenshots/lab2_q3_client_server_ip.png)
+## Why This Matters
+When communication fails on a local network, Ethernet and ARP behavior often tells the real story before higher-layer logs do.
 
-## Objective / Question 4
-Identify HTTP status code returned by the server.
+## Scenario
+The lab artifacts focus on Ethernet frame fields, MAC addressing interpretation, EtherType identification, and ARP request/response behavior.
 
-### Answer
-Server response status: **304 Not Modified**.
+## Method / Filters Used
+- `eth`
+- `arp`
+- Frame detail review for source/destination MAC, EtherType, and ARP fields
 
-### Screenshots
-![Lab 2 Question 4 Screenshot 1](screenshots/lab2_q1_frame_759_status.png)
+## Key Findings
+- Ethernet frame structure and MAC-level addressing are clearly represented in capture evidence.
+- EtherType-based protocol identification is included in the dataset.
+- ARP request/response flow evidence is present.
+- Some ARP/Ethernet item-level text answers were not fully recoverable after source artifact cleanup, so conclusions are limited to validated screenshot evidence.
 
-## Objective / Question 5
-Find the `Last-Modified` value for the requested HTML object.
+## Why These Findings Matter
+Analyst note: **An Ethernet destination MAC on internet-bound traffic is usually the local gateway, not the remote web server**, because Ethernet addressing is local-segment scope.
 
-### Answer
-The captured header shows:
-- `Last-Modified: Wed, 15 Oct 2025 23:34:32 GMT`
+Analyst note: **ARP broadcast-to-unicast transition is a key sanity check** for local reachability: broadcast asks who owns the IP, unicast follows once MAC mapping is known.
 
-### Screenshots
-![Lab 2 Question 5 Screenshot 1](screenshots/lab2_q5_last_modified.png)
+## Evidence
+![Lab 5 Ethernet frame details](screenshots/lab5_q1_ethernet_frame.png)
+![Lab 5 MAC addressing](screenshots/lab5_q2_mac_addresses.png)
+![Lab 5 EtherType evidence](screenshots/lab5_q3_ether_type.png)
+![Lab 5 ARP packet details](screenshots/lab5_q4_arp_details.png)
+![Lab 5 ARP resolution behavior](screenshots/lab5_q5_arp_resolution.png)
 
-## Objective / Question 6
-Find the content length returned by the server.
+---
 
-### Answer
-The `Content-Length` field is present in the capture. The exact numeric value is not clearly extractable from the provided text artifacts.
+## Common Wireshark Filters Used
 
-### Screenshots
-![Lab 2 Question 6 Screenshot 1](screenshots/lab2_q6_content_length.png)
+- `http` — isolate HTTP request/response traffic and headers.
+- `arp` — inspect address resolution and local-LAN mapping behavior.
+- `eth` — examine frame-level fields (MAC addresses, EtherType).
+- `ip.addr == <ip>` — isolate traffic to/from one host.
+- `tcp.stream == <n>` — reconstruct one TCP conversation.
+- `udp.stream == <n>` — isolate one UDP flow where stream indexing is available.
+- `tcp.flags.syn == 1` — focus on connection setup attempts.
+- `icmp` — review echo/reachability behavior and control-plane responses.
 
-## Objective / Question 7
-Identify the server response to the initial authentication attempt.
+## Practical Takeaways
 
-### Answer
-Initial authentication response: **401 Unauthorized** with a `WWW-Authenticate: Basic realm="wireshark-students only"` challenge.
+- Packet evidence can validate application behavior faster than logs alone.
+- Multi-layer analysis (Ethernet → IP → TCP/UDP → HTTP) is essential for accurate root cause analysis.
+- NAT-aware interpretation prevents incorrect conclusions when comparing captures from different network points.
+- ARP and MAC-level checks are critical early steps in local connectivity troubleshooting.
 
-### Screenshots
-![Lab 2 Question 7 Screenshot 1](screenshots/lab2_q8_basic_auth_header.png)
+## Real-World Relevance
 
-## Objective / Question 8
-Identify what new field appears in the second authenticated HTTP GET request.
+This project maps directly to real network and security workflows:
 
-### Answer
-The second GET includes an `Authorization: Basic ...` header (Base64 credentials).
-
-### Screenshots
-![Lab 2 Question 8 Screenshot 1](screenshots/lab2_q8_basic_auth_header.png)
-
-# Lab 3 – Advanced Network Traffic Analysis (UDP, TCP, and VPN)
-
-## Topic Overview
-This lab targets transport-layer and secure tunnel analysis. In packet analysis, comparing UDP vs TCP behavior, finding retransmissions, and validating VPN traffic helps diagnose performance issues, packet loss, and encrypted tunnel correctness.
-
-## Objective / Question 1
-Analyze basic connectivity traffic (ICMP/ping capture).
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 3 Question 1 Screenshot 1](screenshots/lab3_q1_ping_capture.png)
-
-## Objective / Question 2
-Inspect TCP stream behavior and payload continuity.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 3 Question 2 Screenshot 1](screenshots/lab3_q2_tcp_stream.png)
-
-## Objective / Question 3
-Identify retransmission-related events in TCP analysis.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 3 Question 3 Screenshot 1](screenshots/lab3_q3_fast_retransmission.png)
-
-## Objective / Question 4
-Verify VPN-related traffic or tunnel behavior.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 3 Question 4 Screenshot 1](screenshots/lab3_q4_vpn_confirmation.png)
-
-# Lab 4 – NAT and Protocol Analysis
-
-## Topic Overview
-This lab emphasizes NAT behavior and packet field changes across endpoints. In packet analysis, NAT is critical because source/destination addresses and checksums can change in translation paths, affecting troubleshooting for TCP, UDP, and ICMP traffic.
-
-## Objective / Question 1
-Inspect NAT-side capture and identify translated traffic context.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 4 Question 1 Screenshot 1](screenshots/lab4_q1_nat_home_capture.png)
-
-## Objective / Question 2
-Compare TCP port-level behavior across observed packets.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 4 Question 2 Screenshot 1](screenshots/lab4_q2_tcp_ports.png)
-
-## Objective / Question 3
-Review UDP header comparison points.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 4 Question 3 Screenshot 1](screenshots/lab4_q3_udp_header_compare.png)
-
-## Objective / Question 4
-Inspect ICMP behavior in NAT-related traces.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 4 Question 4 Screenshot 1](screenshots/lab4_q4_icmp_nat_view.png)
-
-# Lab 5 – Ethernet Frames and ARP Analysis
-
-## Topic Overview
-This lab focuses on link-layer packet interpretation: Ethernet framing, MAC addressing, EtherType usage, and ARP resolution. These are core skills for diagnosing local network issues such as host discovery failures, ARP cache problems, and LAN-level communication breakdowns.
-
-## Objective / Question 1
-Identify Ethernet frame structure in captured packets.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 5 Question 1 Screenshot 1](screenshots/lab5_q1_ethernet_frame.png)
-
-## Objective / Question 2
-Identify source/destination MAC address details.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 5 Question 2 Screenshot 1](screenshots/lab5_q2_mac_addresses.png)
-
-## Objective / Question 3
-Inspect EtherType-related frame identification.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 5 Question 3 Screenshot 1](screenshots/lab5_q3_ether_type.png)
-
-## Objective / Question 4
-Review ARP packet field details.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 5 Question 4 Screenshot 1](screenshots/lab5_q4_arp_details.png)
-
-## Objective / Question 5
-Examine ARP request/response behavior.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 5 Question 5 Screenshot 1](screenshots/lab5_q5_arp_resolution.png)
-
-## Objective / Question 6
-Correlate ARP exchange evidence in capture.
-
-### Answer
-Answer currently not found clearly in the provided materials.
-
-### Screenshots
-![Lab 5 Question 6 Screenshot 1](screenshots/lab5_q6_arp_exchange.png)
+- **Network troubleshooting:** identify where communication breaks (L2/L3/L4/L7).
+- **SOC/analyst triage:** validate suspicious or failed communication at packet level.
+- **Application validation:** confirm status codes, auth exchanges, and header behavior.
+- **Performance analysis:** reason about delay and retransmission symptoms.
+- **Operational confidence:** understand how traffic *actually moves*, not just how diagrams describe it.
